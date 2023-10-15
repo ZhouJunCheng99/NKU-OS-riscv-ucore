@@ -162,9 +162,8 @@ default_free_pages(struct Page *base, size_t n) {
 + 首先，通过断言 assert(n > 0) 来确保释放页面的数量 n 大于零，以防止错误的参数输入。
 + 接下来，使用for循环遍历从 base 开始到 base + n 结束的页面范围。在循环中，它首先通过断言 assert(!PageReserved(p) && !PageProperty(p)) 确保要释放的页面既不是保留的也不是属性页，然后将页面的标志设置为0，并将引用计数设置为0。
 + 继而，函数更新 base 页面的属性为 n，表示这片页面的长度为 n。然后，它调用 SetPageProperty(base) 将页面标记为属性页，并将 n 的值增加到全局变量 nr_free 中。
-+接下来，函数检查空闲页链表 free_list 是否为空。如果为空，它将 base 页面添加到链表中。否则，它遍历链表查找适当的位置，将 base 页面插入到相应的位置上。（同default_init_memmap函数）
++接下来，函数检查空闲页链表 free_list 是否为空。如果为空，它将 base 页面添加到链表中。否则，它遍历链表查找适当的位置，将 base 页面插入到相应的位置上（同default_init_memmap函数）。
 +接下来，函数通过检查 base 页面的前一个页面（通过 list_prev 获取）是否与 base 页面相邻，如果是的话，则将它们合并为一个大的页面。
-
 +最后，函数通过检查 base 页面的后一个页面（通过 list_next 获取）是否与 base 页面相邻，如果是的话，则将它们合并为一个大的页面。
 
 #### 综上，default_free_pages 函数是一个用于释放一页或多页的连续内存的实现。它负责更新页面的属性，处理空闲页链表，并合并相邻的空闲页面以提高内存利用率。
