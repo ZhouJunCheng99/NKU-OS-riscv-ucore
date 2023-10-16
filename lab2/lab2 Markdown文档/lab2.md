@@ -55,7 +55,7 @@ default_init_memmap(struct Page *base, size_t n) {
 + 参数为一个页的基址base和页的数量n
 + 通过`assert(n > 0);`断言n>0,确保页的数量大于0。
 + 第一个for循环遍历从base开始的n个页表，将这些页表的属性进行初始化。
-+ 通过`assert(PageReserved(p));`断言检查当前页表是否为保留页。若是，则引发错误，不进行对保留页进行初始化；若否，则将非保留页的flags和proterty设为0，表示没有特殊标记和属性，通过set_page_ref(p, 0)将页表的引用计数设置为0，表示还没有被引用。
++ 通过`assert(PageReserved(p));`断言检查当前页表是否为保留页。若否，则引发错误（因为先前已利用`SetPageReserved(pages + i);`将所有的page都设置为保留页了）；若是，则将非保留页的flags和proterty设为0，表示没有特殊标记和属性，通过set_page_ref(p, 0)将页表的引用计数设置为0，表示还没有被引用；
 + 循环结束后，将第基址base处的页表property属性设置为n，表示这一段物理内存的连续页数。使用SetPageProperty(base)函数将base页表的flags的PG_property标志位置为1，表示该页面是一个空闲内存块的头部页面，可以在 alloc_pages 中使用。随后将nr_free的值加上n，表示增加了n个空闲块。
 + 接下来判断free_list是否为空。若是，则直接使用list_add函数将base页表插入作为链表的第一个节点；若否，则进入while循环，寻找合适的位置插入。
 + `list_entry_t* le = &free_list;`初始化一个指针le，指向free_list的头部节点。在while循环中，首先使用le2page宏将le转换为struct Page类型的指针page，方便访问节点的属性；随后判断base是否小于page：若是，则使用list_add_before(le, &(base->page_link))将base->page_link插入到le节点之前，并跳出循环；若否，则继续遍历链表，直到le的下一个节点为free_list，说明已经遍历到了链表的尾部，使用list_add(le, &(base->page_link))将base->page_link插入到le节点之后。跳出循环
