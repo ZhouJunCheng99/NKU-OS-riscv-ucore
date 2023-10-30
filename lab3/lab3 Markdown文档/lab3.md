@@ -345,6 +345,57 @@ sv32、sv39、sv48的异同：
 > - 如果ucore的缺页服务例程在执行过程中访问内存，出现了页访问异常，请问硬件要做哪些事情？
 >- 数据结构Page的全局变量（其实是一个数组）的每一项与页表中的页目录项和页表项有无对应关系？如果有，其对应关系是啥？
 
+do_pgfalut函数处理缺页异常，给未被映射的地址映射上物理页。函数接收三个参数，内存管理结构mm，错误代码error_code和触发缺页异常的线性地址addr。函数首先将返回值ret设置为-E_INVAL，表示参数无效。然后尝试查找包含addr的虚拟内存区域vma，并将pgfault_num加一。如果addr不在合法的vma范围内，说明本次pgfault是因为addr不合法造成的，返回ret。如果addr在合法的vma范围内，则检查当前vma是否可写，如果可写，则设置addr对应物理页的访问权限为用户可访问且可读写；否则设置为用户仅可访问。设置将addr向下取整到最接近的page，即addr所在page的开头，然后将ret设置为-E_NO_MEM，即内存不足无法分配物理页。接着尝试获取addr对应的页表项，如果不存在，则需要为addr所在虚拟地址分配一个物理页。如果分配失败，说明此时的错误为物理页不足，返回ret。如果addr对应页表项存在，并且已经初始化了交换管理，则需要使用**swap_in**函数将该addr对应的数据从磁盘加载到一个物理页，然后使用**page_insert**函数建立线性地址和物理地址的映射关系，并使用函数**swap_map_swappable**将该页面标记为可交换的，并在当前物理页记录对应的线性地址，最后将ret设置为0并返回，即成功映射；如果交换管理没有初始化则发出错误信息并返回ret。
+```C
+int
+do_pgfault(struct mm_struct *mm, uint_t error_code, uintptr_t addr) {
+    int ret = -E_INVAL;
+    struct vma_struct *vma = find_vma(mm, addr);
+    pgfault_num++;
+    if (vma == NULL || vma->vm_start > addr) {
+        cprintf("not valid addr %x, and  can not find it in vma\n", addr);
+        goto failed;
+    }
+    uint32_t perm = PTE_U;
+    if (vma->vm_flags & VM_WRITE) {
+        perm |= (PTE_R | PTE_W);
+    }
+    addr = ROUNDDOWN(addr, PGSIZE);
+    ret = -E_NO_MEM;
+    pte_t *ptep=NULL;
+    ptep = get_pte(mm->pgdir, addr, 1);
+    if (*ptep == 0) {
+        if (pgdir_alloc_page(mm->pgdir, addr, perm) == NULL) {
+            cprintf("pgdir_alloc_page in do_pgfault failed\n");
+            goto failed;
+        }
+    } else {
+        if (swap_init_ok) {
+            struct Page *page = NULL;
+            swap_in(mm, addr, &page);
+            page_insert(mm->pgdir, page, addr, perm);
+            swap_map_swappable(mm, addr, page, 1);
+            page->pra_vaddr = addr;
+        } else {
+            cprintf("no swap_init_ok but ptep is %x, failed\n", *ptep);
+            goto failed;
+        }
+   }
+}
+```
+> 请描述页目录项（Page Directory Entry）和页表项（Page Table Entry）中组成部分对ucore实现页替换算法的潜在用处。
+
+在sv39中，页目录项和页表项结构相同，如下图所示。在时钟(Clock)页替换算法中，根据页表项的访问位PTE_A是否为1确定需要淘汰的页。访问位为“0”，则淘汰该页，如果该页被写过，则还要把它换出到硬盘上；如果访问位为“1”，则将该页表项的此位置“0”，继续访问下一个页。在改进的时钟(Enhanced Clock)页替换算法中，根据PTE_A和PTE_D确定替换的页面。(0，0)表示最近未被引用也未被修改，首先选择此页淘汰；(0，1)最近未被使用，但被修改，其次选择；(1，0)最近使用而未修改，再次选择；(1，1)最近使用且修改，最后选择。
+
+![](exr3_1.png)
+> 如果ucore的缺页服务例程在执行过程中访问内存，出现了页访问异常，请问硬件要做哪些事情？
+
+页访问异常发生后，硬件需要将引发页访问异常的线性地址保存到CR2寄存器中，并将错误代码传递给操作系统告诉操作系统产生错误的一些信息，抛出Page Fault这个异常，保存当前上下文。
+
+> 数据结构Page的全局变量（其实是一个数组）的每一项与页表中的页目录项和页表项有无对应关系？如果有，其对应关系是啥？
+
+页目录项则对应页表的起始地址，一个page对应页表中的一个页表项，数据结构Page的全局变量的每一项对应一个页表项。
+
 #### 练习4：补充完成Clock页替换算法（需要编程）
 >通过之前的练习，相信大家对FIFO的页面替换算法有了更深入的了解，现在请在我们给出的框架上，填写代码，实现 Clock页替换算法（mm/swap_clock.c）。
 请在实验报告中简要说明你的设计实现过程。请回答如下问题：
@@ -452,3 +503,7 @@ _clock_swap_out_victim(struct mm_struct *mm, struct Page ** ptr_page, int in_tic
 
 #### 练习5：阅读代码和实现手册，理解页表映射方式相关知识（思考题）
 >如果我们采用”一个大页“ 的页表映射方式，相比分级页表，有什么好处、优势，有什么坏处、风险？
+
+**好处**：较少内存访问次数，降低访问时间。使用一个大页的页表映射方式时，读取内存的一页只需要2次内存访问，一次查表访问页表项，第二次访问数据；但如果使用分级页表，则需要进行多次内存访问，以3级页表为例，第一次需要访问页目录表找到对应页表，第二次需要访问页表找到页表项，第三次才能访问到对应的数据。二内存访问次数增多意味着访问时间成倍数的增加。
+
+**坏处**：使用大页表需要较大的连续内存，而使用多级页表可以使得页表在内存中离散存储。比如虚拟地址空间大小为4G，每个页大小为4K，如果使用一个大页表的话，共有2^20个页表项，每一个页表项占4B，那么存放所有页表项需要4M。那么就需要连续4M的内存空间来存放所有的页表项。随着虚拟地址空间的增大，存放页表所需要的连续空间也会增大，在操作系统内存紧张或者内存碎片较多时，这无疑会带来额外的开销。但是如果使用多级页表，我们可以使用一页来存放页目录项，页表项存放在内存中的其他位置，不用保证页目录项和页表项连续。除此之外，使用大页表还会造成内存资源浪费。一张大页需要连续的内存空间来存放所有的页表项，这意味着无论一张页表是否用到，每张页表都分配了4B的空间。而多级页表只有在对应页被访问时才会给页目录表分配内存，不需要一开始就给每个页表创建空间。
