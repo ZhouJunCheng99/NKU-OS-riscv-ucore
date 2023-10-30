@@ -191,55 +191,6 @@ swap_out(struct mm_struct *mm, int n, int in_tick)
 
 然后，函数调用swapfs_read函数从磁盘交换区中读取页表项(*ptep)表示的页面，并将数据存储到之前分配的页面result中。
 
-#### 一些相关函数
-
-#### 练习2：深入理解不同分页模式的工作原理（思考题）
-get_pte()函数（位于`kern/mm/pmm.c`）用于在页表中查找或创建页表项，从而实现对指定线性地址对应的物理页的访问和映射操作。这在操作系统中的分页机制下，是实现虚拟内存与物理内存之间映射关系非常重要的内容。
- - get_pte()函数中有两段形式类似的代码， 结合sv32，sv39，sv48的异同，解释这两段代码为什么如此相像。
- - 目前get_pte()函数将页表项的查找和页表项的分配合并在一个函数里，你认为这种写法好吗？有没有必要把两个功能拆开？
-
-get_pte函数如下
-```C
-pte_t *get_pte(pde_t *pgdir, uintptr_t la, bool create) {
-    pde_t *pdep1 = &pgdir[PDX1(la)];
-    if (!(*pdep1 & PTE_V)) {
-        struct Page *page;
-        if (!create || (page = alloc_page()) == NULL) {
-            return NULL;
-        }
-        set_page_ref(page, 1);
-        uintptr_t pa = page2pa(page);
-        memset(KADDR(pa), 0, PGSIZE);
-        
-        *pdep1 = pte_create(page2ppn(page), PTE_U | PTE_V);
-    }
-    pde_t *pdep0 = &((pde_t *)KADDR(PDE_ADDR(*pdep1)))[PDX0(la)];
-    if (!(*pdep0 & PTE_V)) {
-    	struct Page *page;
-    	if (!create || (page = alloc_page()) == NULL) {
-    		return NULL;
-    	}
-    	set_page_ref(page, 1);
-    	uintptr_t pa = page2pa(page);
-    	memset(KADDR(pa), 0, PGSIZE);
-    	*pdep0 = pte_create(page2ppn(page), PTE_U | PTE_V);
-    }
-    return &((pte_t *)KADDR(PDE_ADDR(*pdep0)))[PTX(la)];
-}
-
-struct Page *get_page(pde_t *pgdir, uintptr_t la, pte_t **ptep_store) {
-    pte_t *ptep = get_pte(pgdir, la, 0);
-    if (ptep_store != NULL) {
-        *ptep_store = ptep;
-    }
-    if (ptep != NULL && *ptep & PTE_V) {
-        return pte2page(*ptep);
-    }
-    return NULL;
-}
-
-```
-
 我们回到do_pgfault函数，在执行完swap_in函数后，会调用page_insert函数
 
 + page_insert函数:建立虚拟地址与物理页的映射
