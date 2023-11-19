@@ -74,7 +74,51 @@ get_pid(void) {
     return last_pid;
 }
 ```
+### 练习三：编写proc_run函数（需要编码）
+proc_run用于将指定的进程切换到CPU上运行。它的大致执行步骤包括：
 
++ 检查要切换的进程是否与当前正在运行的进程相同，如果相同则不需要切换。
++ 禁用中断。你可以使用/kern/sync/sync.h中定义好的宏local_intr_save(x)和local_intr_restore(x)来实现关、开中断。
++ 切换当前进程为要运行的进程。
++ 切换页表，以便使用新进程的地址空间。/libs/riscv.h中提供了lcr3(unsigned int cr3)函数，可实现修改CR3寄存器值的功能。
++ 实现上下文切换。/kern/process中已经预先编写好了switch.S，其中定义了switch_to()函数。可实现两个进程的context切换。
++ 允许中断。
+
+请回答如下问题：
++ 在本实验的执行过程中，创建且运行了几个内核线程？
+
+完成代码编写后，编译并运行代码：make qemu
+
+如果可以得到如 附录A所示的显示内容（仅供参考，不是标准答案输出），则基本正确。
+
+编写的proc_run函数：
+```C
+void proc_run(struct proc_struct *proc) {
+    if (proc != current) {
+        bool intr_flag;
+        struct proc_struct *prev = current, *next = proc;
+        local_intr_save(intr_flag);//禁用中断
+        current = proc;//切换当前进程为要运行的进程
+        lcr3(next->cr3);//切换新进程的页表，以便使用新进程的地址空间。
+        switch_to(&(prev->context), &(next->context));//实现上下文切换，切换到新进程
+        local_intr_restore(intr_flag);//允许中断
+    }
+}
+```
+实现思路：
+
++ 首先判断要切换的进程是否与当前正在运行的进程相同，如果相同则不需要切换。
++ 使用 local_intr_save 函数保存当前的中断状态，并将中断禁用。这是为了在进行进程切换的过程中防止被中断打断。
++ 将全局变量 current 设置为传入的进程 proc，表示当前正在运行的进程切换为指定的进程。
++ 使用 lcr3 函数切换页表，以便开始使用新进程的地址空间。next->cr3 存储了新进程的页目录表的物理地址。
++ 使用 switch_to 函数进行上下文切换。这里传递了两个参数，分别是当前进程的上下文 prev->context 和要切换到的新进程的上下文 next->context。上下文切换的目的是保存当前进程的寄存器状态，并将新进程的寄存器状态恢复，从而实现进程的切换。
++ 最后，使用 local_intr_restore 函数允许中断，将之前保存的中断状态恢复，使系统能够响应中断。
+
+在本实验的执行过程中，创建且运行了几个内核线程？
+
+答：两个。
++ idleproc：第0个内核进程，完成新内核线程的创建以及内核中各个子系统的初始化，之后立即调度执行其他进程。 
++ initproc：在调度后使用的内核线程，本实验仅让它输出一个Hello World，证明我们的内核进程实现的没有问题。
 
 ### 实验结果
 
