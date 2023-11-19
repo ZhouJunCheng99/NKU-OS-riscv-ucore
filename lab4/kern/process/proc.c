@@ -106,7 +106,7 @@ alloc_proc(void) {
         proc->state = PROC_UNINIT;
         proc->pid = -1;
         proc->runs = 0;
-        proc->kstack = NULL;
+        proc->kstack = 0;
         proc->need_resched = 0;
         proc->parent = NULL;
         proc->mm = NULL;
@@ -294,7 +294,7 @@ do_fork(uint32_t clone_flags, uintptr_t stack, struct trapframe *tf) {
         goto fork_out;
     }
     ret = -E_NO_MEM;
-    //LAB4:EXERCISE2 YOUR CODE
+    //LAB4:EXERCISE2 2112612
     /*
      * Some Useful MACROs, Functions and DEFINEs, you can use them in below implementation.
      * MACROs or Functions:
@@ -319,18 +319,28 @@ do_fork(uint32_t clone_flags, uintptr_t stack, struct trapframe *tf) {
     //    5. insert proc_struct into hash_list && proc_list
     //    6. call wakeup_proc to make the new child process RUNNABLE
     //    7. set ret vaule using child proc's pid
-    
-    if ((proc = alloc_proc()) == NULL)
+
+    if((proc = alloc_proc())==NULL){ //分配并初始化进程控制块
         goto fork_out;
-    if ((ret = setup_kstack(proc)) != 0)
-        goto fork_out;
-    if ((ret = copy_mm(clone_flags, proc)) != 0)
-        goto fork_out;
-    copy_thread(proc, stack, tf);
-    ret = proc->pid = get_pid();
+    }
+    proc->parent = current; //将子进程的父节点设置为当前进程
+    if((setup_kstack(proc)!=0)){ //分配并初始化内核栈
+        goto bad_fork_cleanup_proc;
+    }
+    if (copy_mm(clone_flags, proc) != 0) { //根据clone_flags决定是复制还是共享内存管理系统
+        goto bad_fork_cleanup_kstack;
+    }
+
+    copy_thread(proc, stack, tf); //设置进程的中断帧和上下文
+
+    proc->pid = get_pid();
+
     hash_proc(proc);
-    list_add(&proc_list, &(proc->list_link));
-    wakeup_proc(proc);  
+    list_add(&proc_list, &(proc->list_link)); //把设置好的进程加入链表
+    nr_process ++; //全局线程的数目+1
+
+    wakeup_proc(proc); //将新建的进程设为就绪态
+    ret = proc->pid; //将返回值设为线程id
 
 fork_out:
     return ret;
