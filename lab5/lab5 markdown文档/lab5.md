@@ -19,7 +19,30 @@ do_execv函数调用load_icode（位于kern/process/proc.c中）来加载并解�
 
 - 请简要描述这个用户态进程被ucore选择占用CPU执行（RUNNING态）到具体执行应用程序第一条指令的整个经过。
 
+实现过程：
 
+1.设置栈指针：将栈指针指向用户栈的顶部（USTACKTOP）。这样，在用户进程执行时，它可以正确地使用栈来保存局部变量和函数调用。
+
+2.设置程序计数器：将程序计数器指向用户程序的入口点，即可执行程序的ELF文件头的值。通过将该地址赋值给 tf->epc，在执行 mret 指令后，处理器将会跳转到用户程序的入口开始执行。
+
+3.设置状态寄存器：状态寄存器应该与之前保存的sstatus值相同，但需要清除SPP（表示当前特权级别）和SPIE位（表示之前的特权级别是否启用中断），以便将用户进程的状态设置为用户模式，并允许用户进程处理异常。
+
+
+执行过程：
+
+1.在init_main中通过kernel_thread调用do_fork创建用户进程并且通过wakeup_proc唤醒进程，使其执行函数user_main，此时该进程状态已经为`PROC_RUNNABLE`
+
+2.在`user_main`中通过宏`KERNEL_EXECVE`，调用`kernel_execve`
+
+3.在`kernel_execve`中执行ebreak发生断点异常，转到`__alltraps`，转到`trap`，再到`trap_dispatch`，然后到`exception_handler`，最后到`CAUSE_BREAKPOINT`处
+
+4.在`CAUSE_BREAKPOINT`处调用`syscall`
+
+5.在`syscall`中根据参数，确定执行`sys_exec`，调用`do_execve`
+
+6.在`do_execve`中调用`load_icode`，加载文件
+
+7.加载完毕后一路返回，直到`__alltraps`的末尾，接着执行`__trapret`后的内容，到`sret`，表示退出S态，回到用户态执行，这时开始执行用户的应用程序
 
 
 ## 练习2: 父进程复制自己的内存空间给子进程（需要编码）
