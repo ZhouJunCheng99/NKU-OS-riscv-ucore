@@ -19,6 +19,30 @@ do_execv函数调用load_icode（位于kern/process/proc.c中）来加载并解�
 
 - 请简要描述这个用户态进程被ucore选择占用CPU执行（RUNNING态）到具体执行应用程序第一条指令的整个经过。
 
+代码：
+```C++
+    //(6) setup trapframe for user environment
+    struct trapframe *tf = current->tf;
+    // Keep sstatus
+    uintptr_t sstatus = tf->status;
+    memset(tf, 0, sizeof(struct trapframe));
+    /* LAB5:EXERCISE1 YOUR CODE
+     * should set tf->gpr.sp, tf->epc, tf->status
+     * NOTICE: If we set trapframe correctly, then the user level process can return to USER MODE from kernel. So
+     *          tf->gpr.sp should be user stack top (the value of sp)
+     *          tf->epc should be entry point of user program (the value of sepc)
+     *          tf->status should be appropriate for user program (the value of sstatus)
+     *          hint: check meaning of SPP, SPIE in SSTATUS, use them by SSTATUS_SPP, SSTATUS_SPIE(defined in risv.h)
+     */
+
+    tf->gpr.sp = USTACKTOP;// 设置tf->gpr.sp为用户栈的顶部地址
+    tf->epc = elf->e_entry;// 设置tf->epc为用户程序的入口地址
+    // SPP 0 U-mode  SPIE 1 能中断     注:这tf是属于u-mode的 SPIE位的作用就是在中断帧返回时自动恢复 SIE位
+    tf->status = (read_csr(sstatus) & ~SSTATUS_SPP) | SSTATUS_SPIE;// 根据需要设置 tf->status 的值，清除 SSTATUS_SPP 和 SSTATUS_SPIE 位
+
+    ret = 0;
+```
+
 实现过程：
 
 1.设置栈指针：将栈指针指向用户栈的顶部（USTACKTOP）。这样，在用户进程执行时，它可以正确地使用栈来保存局部变量和函数调用。
