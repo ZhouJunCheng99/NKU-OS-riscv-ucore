@@ -452,10 +452,9 @@ do_fork(uint32_t clone_flags, uintptr_t stack, struct trapframe *tf) {
     copy_thread(proc, stack, tf); //设置进程的中断帧和上下文
 
     // proc->pid = get_pid();
-
     // hash_proc(proc);
-    // list_add(&proc_list, &(proc->list_link)); //把设置好的进程加入链表
-    // nr_process ++; //全局线程的数目+1
+    // // list_add(&proc_list, &(proc->list_link)); //把设置好的进程加入链表
+    // // nr_process ++; //全局线程的数目+1
 
     // // Lab5: 设置进程间的关系
     // set_links(proc);
@@ -464,11 +463,10 @@ do_fork(uint32_t clone_flags, uintptr_t stack, struct trapframe *tf) {
     bool intr_flag;
     local_intr_save(intr_flag);
     {
-        proc->pid = get_pid();// 为子进程获取一个唯一的 PID
-        hash_proc(proc);// 将子进程添加到进程哈希表中
-        // list_add(&proc_list,&(proc->list_link));// 将新进程添加到进程列表中
-        // nr_process ++;//更新进程数量计数器
-        set_links(proc);// 设置进程的关系链
+        proc->pid = get_pid();
+        hash_proc(proc);
+
+        set_links(proc);
     }
     local_intr_restore(intr_flag);
 
@@ -676,10 +674,9 @@ load_icode(unsigned char *binary, size_t size) {
      *          hint: check meaning of SPP, SPIE in SSTATUS, use them by SSTATUS_SPP, SSTATUS_SPIE(defined in risv.h)
      */
 
-    tf->gpr.sp = USTACKTOP;// 设置用户进程的栈指针为用户栈的顶部.当进程从内核态切换到用户态时，栈指针需要指向用户栈的有效地址
-    tf->epc = elf->e_entry; //修改epc，sret返回地址发生变化，返回执行exit.c函数，其中执行退出，调用sys_exit
-    // 进程从内核态切换到用户态，需要将中断帧的状态调整为用户态，清除了 SPP 表示的特权级信息，以及 SPIE 表示的中断使能信息。
-    tf->status = sstatus & ~(SSTATUS_SPP | SSTATUS_SPIE);// 将 sstatus 寄存器中的 SPP和 SPIE位清零
+    tf->gpr.sp = USTACKTOP;
+    tf->epc = elf->e_entry; 
+    tf->status = sstatus & ~(SSTATUS_SPP | SSTATUS_SPIE);
 
     ret = 0;
 out:
